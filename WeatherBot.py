@@ -40,8 +40,7 @@ class MyClient(discord.Client):
     
     def gen_attachment(self, current: int, view: int, lat: float, lon: float, location: str):
         wi = WI.WeatherImage(lat, lon, location)
-        wi.drawBase(current)
-        wi.drawCurrent(current, view)
+        wi.drawChart(current, view)
         filename = wi.saveImage()
         file = discord.File(filename)
         embed = discord.Embed()
@@ -117,7 +116,7 @@ class MyClient(discord.Client):
                     channel = self.get_channel(channel_id)
                     message = await channel.fetch_message(message_id)
                     await message.edit(embed=embed, attachments=[file])
-                    await message.remove_reaction(reaction, user)
+                await message.remove_reaction(reaction, user)
 
 
 intents = discord.Intents.default()

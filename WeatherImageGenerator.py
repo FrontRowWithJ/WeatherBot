@@ -19,15 +19,18 @@ Point = Tuple[int, int]
 
 class Colors:
     WHITE = (255, 255, 255)
-    SHARK_BLACK = (32, 33, 36)
-    EBONY = (48, 49, 52)
-    DARK_ORANGE = (77, 67, 29)
+    RAISIN_BLACK = (32, 33, 36)
+    DARK_CHARCOAL = (48, 49, 52)
+    CAFE_NOIR = (77, 67, 29)
+    SPACE_CADET = (30, 53, 89)
+    JORDY_BLUE = (138, 180, 248)
+    TANGERINE_YELLOW = (255, 204, 0)
 
 
 class Views:
-    TEMPERATURE: int = 0
-    PRECIPITATION: int = 1
-    WIND: int = 2
+    TEMPERATURE = 0
+    PRECIPITATION = 1
+    WIND = 2
 
 
 class WeatherImage:
@@ -41,6 +44,8 @@ class WeatherImage:
     GRAPH_WIDTH = WIDTH - 2 * GAP
     BAR_HEIGHT_FACTOR = 10
     TEXT_HEIGHT = 10
+    MIN_WIND_ICON_WIDTH = 10
+    MAX_WIND_ICON_WIDTH = (WIDTH - GAP * 2) / 8
     LABELS = ["Temperature", "Precipitation", "Wind"]
 
     image: Image.Image
@@ -54,10 +59,10 @@ class WeatherImage:
     location: str
 
     def __init__(self, lat: float, lon: float, location: str) -> None:
-        self.location = location.capitalize()
+        self.location = " ".join([word.capitalize() for word in location.split()])
         self.coords = (lat, lon)
         self.image = Image.new("RGBA", (self.WIDTH, self.HEIGHT))
-        self.image.paste(Colors.SHARK_BLACK, (0, 0, self.WIDTH - 1, self.HEIGHT - 1))
+        self.image.paste(Colors.RAISIN_BLACK, (0, 0, self.WIDTH - 1, self.HEIGHT - 1))
         self.draw = ImageDraw.Draw(self.image)
         self.weatherData = getWeatherData(lat, lon)
         self.dates = list(self.weatherData.keys())
@@ -68,7 +73,7 @@ class WeatherImage:
         self.draw.rounded_rectangle((x, y, x + width, y + height), radius=15, fill=fill)
 
     def clear(self) -> None:
-        self.image.paste(Colors.SHARK_BLACK, (0, 0, self.WIDTH - 1, self.HEIGHT - 1))
+        self.image.paste(Colors.RAISIN_BLACK, (0, 0, self.WIDTH - 1, self.HEIGHT - 1))
 
     def getWeatherIcon(self, iconCode: str) -> Image.Image:
         if iconCode not in self.icons:
@@ -76,14 +81,16 @@ class WeatherImage:
             self.icons[iconCode] = Image.open(urlopen(url))
         return self.icons[iconCode]
 
-    def drawText(self, x: int, y: int, text: str, *, font_size=20, anchor="mt") -> None:
+    def drawText(
+        self, x: float, y: float, text: str, *, font_size=20, anchor="mt"
+    ) -> None:
         self.draw.text(
             (x, y), text, anchor=anchor, fill=Colors.WHITE, font_size=font_size
         )
 
     def drawWeatherIcon(self, iconCode: str, x: int, y: int, size=ICON_WIDTH) -> None:
         icon = self.getWeatherIcon(iconCode).resize((size, size))
-        self.image.paste(icon, (x, y, x + size, y + size), mask=icon)
+        self.image.paste(icon, (x, y, x + size, y + size), icon)
 
     def saveImage(self) -> str:
         fileName = f"{self.location}-{self.LABELS[self.view]}-{self.current}.png"
@@ -95,14 +102,12 @@ class WeatherImage:
 
     def drawQuad(self, tl: Point, tr: Point, bl: Point, br: Point, fill: Color) -> None:
         self.draw.polygon([tl, tr, bl, br], fill)
-        self.draw.line([tl, tr], (255, 204, 0))
 
-    def drawBase(self, current: int):
-        self.current = current
+    def _drawBase(self, current: int):
         for i, date in enumerate(self.dates):
             x = self.GAP * (2 * i + 1) + (self.CARD_WIDTH * i)
             y = self.HEIGHT - self.GAP - self.CARD_HEIGHT
-            bgColor = Colors.EBONY if i == current else Colors.SHARK_BLACK
+            bgColor = Colors.DARK_CHARCOAL if i == current else Colors.RAISIN_BLACK
             self.drawRoundedRectangle(x, y, self.CARD_WIDTH, self.CARD_HEIGHT, bgColor)
             weekday = getDayShort(date)
             self.drawText(x + self.CARD_WIDTH // 2, y + self.GAP // 2, weekday)
@@ -124,33 +129,35 @@ class WeatherImage:
                 + (self.CARD_HEIGHT - self.ICON_WIDTH) // 2
             )
             self.drawWeatherIcon(iconCode, x, y)
+            data = self.weatherData[self.dates[current]]
+            iconCode = getIconCode(data)
+            temp = getAvgTemp(data)
+            weekday = getDayFull(self.dates[current])
+            description = getDescription(data)
+            self.drawText(
+                self.WIDTH / 2, self.GAP, self.location, anchor="mt", font_size=20
+            )
+            self.drawWeatherIcon(iconCode, self.GAP, self.GAP, 90)
+            self.drawText(
+                self.GAP + 90 + 5, self.GAP + 30, f"{temp}°", font_size=30, anchor="lm"
+            )
+            self.drawText(
+                self.WIDTH - self.GAP, self.GAP, weekday, font_size=25, anchor="rt"
+            )
+            self.drawText(
+                self.WIDTH - self.GAP,
+                self.GAP + 25 + 10,
+                description,
+                font_size=15,
+                anchor="rt",
+            )
 
-    def drawCurrent(self, current: int, view: int) -> None:
+    def drawChart(self, current: int, view: int) -> None:
         self.current = current
+        self.view = view
+        self._drawBase(current)
         label = self.LABELS[view]
-        data = self.weatherData[self.dates[current]]
-        iconCode = getIconCode(data)
-        temp = getAvgTemp(data)
-        weekday = getDayFull(self.dates[current])
-        description = getDescription(data)
-        self.drawText(
-            self.WIDTH / 2, self.GAP, self.location, anchor="mt", font_size=20
-        )
         self.drawText(self.WIDTH / 2, self.HEIGHT / 8, label, anchor="mt", font_size=15)
-        self.drawWeatherIcon(iconCode, self.GAP, self.GAP, 90)
-        self.drawText(
-            self.GAP + 90 + 5, self.GAP + 30, f"{temp}°", font_size=30, anchor="lm"
-        )
-        self.drawText(
-            self.WIDTH - self.GAP, self.GAP, weekday, font_size=25, anchor="rt"
-        )
-        self.drawText(
-            self.WIDTH - self.GAP,
-            self.GAP + 25 + 10,
-            description,
-            font_size=15,
-            anchor="rt",
-        )
         if view == Views.TEMPERATURE:
             self.drawTemperatureGraph()
         elif view == Views.PRECIPITATION:
@@ -159,10 +166,53 @@ class WeatherImage:
             self.drawWindGraph()
 
     def drawPrecipitationGraph(self) -> None:
-        pass
+        data = self.weatherData[self.dates[self.current]]
+        times = [d["time"] for d in data]
+        rains = [d["rain"] for d in data]
+        y2 = self.HEIGHT - self.GAP * 2 - self.CARD_HEIGHT
+        width = (self.WIDTH - self.GAP * 2) / len(data)
+        for i in range(len(data)):
+            x1 = self.GAP + width * i
+            x2 = self.GAP + width * (i + 1)
+            y1 = y2 - rains[i] * self.BAR_HEIGHT_FACTOR * 2
+            self.drawQuad((x1, y1), (x2, y1), (x2, y2), (x1, y2), Colors.SPACE_CADET)
+            self.drawLine(x1, y1, x2, y1, Colors.JORDY_BLUE)
+            self.drawText(x1 + width / 2, y2 + 5, times[i], font_size=12, anchor="mt")
+            self.drawText(
+                x1 + width / 2, y1 - 5, f"{rains[i]} mm", font_size=12, anchor="mb"
+            )
+
+    def drawArrow(self, x: int, y: int, width: int, angle: float) -> None:
+        with Image.open("wind_icon.png") as icon:
+            resizedIcon = icon.resize((width, width)).rotate(angle)
+            self.image.paste(resizedIcon, (x, y), resizedIcon)
 
     def drawWindGraph(self) -> None:
-        pass
+        max_width = (self.WIDTH - 2 * self.GAP) / 8
+        max_height = self.HEIGHT - self.GAP * 3 - self.CARD_HEIGHT - 90
+        data = self.weatherData[self.dates[self.current]]
+        speeds = [d["wind_speed"] * 3.6 for d in data]
+        degs = [d["wind_deg"] for d in data]
+        times = [d["time"] for d in data]
+        left = self.WIDTH / 2 - max_width / 2 * len(data)
+        y = self.GAP + 90
+
+        for i in range(len(data)):
+            width = max(
+                self.MIN_WIND_ICON_WIDTH, min(self.MAX_WIND_ICON_WIDTH, speeds[i] * 1.5)
+            )
+            x_offset = (max_width - width) / 2
+            y_offset = (max_height - width) / 2
+            x = left + max_width * i
+            self.drawText(
+                int(x + max_width / 2),
+                int(y),
+                f"{int(round(speeds[i], 0))} km/h",
+                anchor="mb",
+                font_size=15,
+            )
+            self.drawArrow(int(x + x_offset), int(y + y_offset), int(width), degs[i])
+            self.drawText(x + max_width / 2, y + max_height, times[i], font_size=12)
 
     def drawTemperatureGraph(self) -> None:
         data = self.weatherData[self.dates[self.current]]
@@ -180,8 +230,9 @@ class WeatherImage:
             (x2, y1),
             (x2, y2 - self.TEXT_HEIGHT),
             (x1, y2 - self.TEXT_HEIGHT),
-            Colors.DARK_ORANGE,
+            Colors.CAFE_NOIR,
         )
+        self.drawLine(x1, y1, x2, y1, Colors.TANGERINE_YELLOW)
         j = 0
         while j < len(temps) - 1:
             x1 = self.GAP + width * (j + 1)
@@ -193,8 +244,9 @@ class WeatherImage:
                 (x2, y2),
                 (x2, y - self.TEXT_HEIGHT),
                 (x1, y - self.TEXT_HEIGHT),
-                Colors.DARK_ORANGE,
+                Colors.CAFE_NOIR,
             )
+            self.drawLine(x1, y1, x2, y2, Colors.TANGERINE_YELLOW)
             a = y - temps[j] * self.BAR_HEIGHT_FACTOR
             b = y - temps[j + 1] * self.BAR_HEIGHT_FACTOR
             textX = x1 + width / 2

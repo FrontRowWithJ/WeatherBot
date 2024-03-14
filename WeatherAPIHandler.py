@@ -16,8 +16,12 @@ class Item(TypedDict):
     rain: float
     time: str
     icon: str
+    wind_speed: float
+    wind_deg: float
+
 
 WeatherData = Mapping[str, List[Item]]
+
 
 def getLatLon(location: str) -> Outcome[tuple[float, float]]:
     url = f"http://api.openweathermap.org/geo/1.0/direct?q={location}&limit={LIMIT}&appid={WEATHER_API_KEY}"
@@ -46,6 +50,8 @@ def getWeatherData(lat: float, lon: float) -> WeatherData:
             "rain": blob.get("rain", {"": 0}).get("3h", 0),
             "time": time[0:-3],
             "icon": blob["weather"][0]["icon"],
+            "wind_speed": blob["wind"]["speed"],
+            "wind_deg": blob["wind"]["deg"],
         }
         if date in group:
             group[date].append(item)
@@ -56,7 +62,6 @@ def getWeatherData(lat: float, lon: float) -> WeatherData:
 
 def getIconCode(data: List[Item]) -> str:
     icons = [d["icon"] for d in data]
-    
     return max(icons, key=icons.count)
 
 
@@ -65,12 +70,12 @@ def getDescription(data: List[Item]) -> str:
     return max(descriptions, key=descriptions.count)
 
 
-def getMinTemp(data: List[Item]) -> int:
-    return min([round(d["temp_min"], 1) for d in data])
+def getMinTemp(data: List[Item]) -> float:
+    return round(min([d["temp_min"] for d in data]), 1)
 
 
-def getMaxTemp(data: List[Item]) -> int:
-    return max([round(d["temp_max"], 1) for d in data])
+def getMaxTemp(data: List[Item]) -> float:
+    return round(max([d["temp_max"] for d in data]), 1)
 
 
 def getAvgTemp(data: List[Item]) -> int:
