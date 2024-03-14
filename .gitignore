@@ -2,5 +2,6 @@
 *test*
 *.json
 *.png
+!wind_icon.png
 Constants.py
 InputParser.py
