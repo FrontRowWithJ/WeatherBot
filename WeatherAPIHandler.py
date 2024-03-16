@@ -12,7 +12,6 @@ class Item(TypedDict):
     temp: float
     main: str
     description: float
-    clouds: int
     rain: float
     time: str
     icon: str
@@ -46,7 +45,6 @@ def getWeatherData(lat: float, lon: float) -> WeatherData:
             "temp_max": blob["main"]["temp_max"],
             "main": blob["weather"][0]["main"],
             "description": blob["weather"][0]["description"],
-            "clouds": blob["clouds"]["all"],
             "rain": blob.get("rain", {"": 0}).get("3h", 0),
             "time": time[0:-3],
             "icon": blob["weather"][0]["icon"],

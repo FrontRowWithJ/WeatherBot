@@ -2,22 +2,27 @@ import discord
 import WeatherImageGenerator as WI
 from WeatherAPIHandler import getLatLon
 import time
-from typing import Mapping, TypedDict
+from typing import TypedDict, Protocol, Optional
 from Constants import BOT_TOKEN
 
 
 class State(TypedDict):
-    current: int
+    page: int
+    view: str
     location: str
     lat: float
     lon: float
-    view: int
-    time: str
+    time: int
 
 
-States = Mapping[int, State]
+class _EmbedFieldProxy(Protocol):
+    name: Optional[str]
+    value: Optional[str]
+    inline: bool
+
 
 MAX_TIME_ALLOWED = 60
+
 
 class MyClient(discord.Client):
     ONE_SECOND = 1
@@ -35,23 +40,31 @@ class MyClient(discord.Client):
         FORWARD_EMOJI,
         CROSS_EMOJI,
     )
-    
-    states: States = {}
-    
-    def gen_attachment(self, current: int, view: int, lat: float, lon: float, location: str):
-        wi = WI.WeatherImage(lat, lon, location)
-        wi.drawChart(current, view)
+
+    CASTERS = {
+        "page": int,
+        "location": str,
+        "lat": float,
+        "lon": float,
+        "view": str,
+        "time": int,
+    }
+
+    def gen_attachment(self, state: State):
+        wi = WI.WeatherImage(state["lat"], state["lon"], state["location"])
+        wi.drawChart(state["page"], state["view"])
         filename = wi.saveImage()
         file = discord.File(filename)
         embed = discord.Embed()
+        for key in state:
+            embed.add_field(name=key, value=state[key])
         embed.set_image(url=f"attachment://{filename}")
         return file, embed
 
     async def on_message(self, message: discord.Message):
-        if message.author.bot:
+        if message.author.bot or not message.content.startswith("/weather"):
             return
-        if not message.content.startswith("/weather"):
-            return
+
         channel = message.channel
         await message.delete(delay=self.ONE_SECOND)
         location = message.content[8:].strip()
@@ -63,60 +76,58 @@ class MyClient(discord.Client):
         if not outcome:
             return await channel.send(outcome.error, delete_after=self.ONE_SECOND * 3)
         lat, lon = outcome.result
-        current = 0
-        file, embed = self.gen_attachment(current, WI.Views.TEMPERATURE, lat, lon, location)
-        imageMessage = await channel.send(file=file, embed=embed)
-        key = (channel.id, imageMessage.id)
-        self.states[key] = {
-            "current": current,
+        page = 0
+        state: State = {
+            "page": page,
+            "view": WI.Views.TEMPERATURE,
             "location": location,
             "lat": lat,
             "lon": lon,
-            "view": WI.Views.TEMPERATURE,
-            "time": time.time(),
+            "time": int(time.time()),
         }
-
+        file, embed = self.gen_attachment(state)
+        imageMessage = await channel.send(file=file, embed=embed)
         for emoji in self.EMOJIS:
             await imageMessage.add_reaction(emoji)
 
     async def on_reaction_add(self, reaction: discord.Reaction, user: discord.User):
         if user.bot:
             return
-        channel_id = reaction.message.channel.id
-        message_id = reaction.message.id
-        key = (channel_id, message_id)
-        if key in self.states:
-            emoji = str(reaction)
-            if emoji in self.EMOJIS:
-                state = self.states[key]
-                current, location, lat, lon, view, t = state.values()
-                time_ellapsed = time.time() - t
-                if time_ellapsed >= MAX_TIME_ALLOWED:
-                    del self.states[key]
-                elif emoji == self.FORWARD_EMOJI and current < 4:
-                    current += 1
-                elif emoji == self.BACKWARD_EMOJI and current > 0:
-                    current -= 1
+        emoji = str(reaction)
+        if emoji in self.EMOJIS:
+            channel_id = reaction.message.channel.id
+            message_id = reaction.message.id
+            channel = self.get_channel(channel_id)
+            message = await channel.fetch_message(message_id)
+            currState = self.getState(message.embeds[0].fields)
+            page, view, t = currState["page"], currState["view"], currState["time"]
+            time_ellapsed = time.time() - t
+            if time_ellapsed < MAX_TIME_ALLOWED:
+                if emoji == self.FORWARD_EMOJI and page < 4:
+                    page += 1
+                elif emoji == self.BACKWARD_EMOJI and page > 0:
+                    page -= 1
                 elif emoji == self.CROSS_EMOJI:
-                    channel = self.get_channel(channel_id)
-                    message = await channel.fetch_message(message_id)
                     await message.delete()
-                    del self.states[key]
                 elif emoji == self.RAIN_EMOJI:
                     view = WI.Views.PRECIPITATION
                 elif emoji == self.WIND_EMOJI:
                     view = WI.Views.WIND
                 elif emoji == self.TEMPERATURE_EMOJI:
                     view = WI.Views.TEMPERATURE
-                if state["current"] != current or state["view"] != view:
-                    state["current"] = current
-                    state["view"] = view
-                    state["time"] = time.time()
-                    file, embed = self.gen_attachment(current, view, lat, lon, location)
-                    channel = self.get_channel(channel_id)
-                    message = await channel.fetch_message(message_id)
+                if currState["view"] != view or currState["page"] != page:
+                    currState["view"] = view
+                    currState["page"] = page
+                    currState["time"] = int(time.time())
+                    file, embed = self.gen_attachment(currState)
                     await message.edit(embed=embed, attachments=[file])
-                await message.remove_reaction(reaction, user)
+            await message.remove_reaction(reaction, user)
+
+    def getState(self, fields: list[_EmbedFieldProxy]):
+        state: State = {}
+        for field in fields:
+            state[field.name] = self.CASTERS[field.name](field.value)
+        return state
 
 
 intents = discord.Intents.default()

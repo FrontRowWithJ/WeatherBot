@@ -28,9 +28,9 @@ class Colors:
 
 
 class Views:
-    TEMPERATURE = 0
-    PRECIPITATION = 1
-    WIND = 2
+    TEMPERATURE = "Temperature"
+    PRECIPITATION = "Precipitation"
+    WIND = "Wind"
 
 
 class WeatherImage:
@@ -46,7 +46,6 @@ class WeatherImage:
     TEXT_HEIGHT = 10
     MIN_WIND_ICON_WIDTH = 10
     MAX_WIND_ICON_WIDTH = (WIDTH - GAP * 2) / 8
-    LABELS = ["Temperature", "Precipitation", "Wind"]
 
     image: Image.Image
     draw: ImageDraw.ImageDraw
@@ -54,7 +53,7 @@ class WeatherImage:
     weatherData: WeatherData
     dates: list[str]
     coords: Point
-    current = 0
+    page = 0
     view = Views.TEMPERATURE
     location: str
 
@@ -82,7 +81,7 @@ class WeatherImage:
         return self.icons[iconCode]
 
     def drawText(
-        self, x: float, y: float, text: str, *, font_size=20, anchor="mt"
+        self, x: float, y: float, text: str, *, font_size=12, anchor="mt"
     ) -> None:
         self.draw.text(
             (x, y), text, anchor=anchor, fill=Colors.WHITE, font_size=font_size
@@ -93,7 +92,7 @@ class WeatherImage:
         self.image.paste(icon, (x, y, x + size, y + size), icon)
 
     def saveImage(self) -> str:
-        fileName = f"{self.location}-{self.LABELS[self.view]}-{self.current}.png"
+        fileName = f"{self.location}-{self.view}-{self.page}.png"
         self.image.save(fileName)
         return fileName
 
@@ -103,14 +102,16 @@ class WeatherImage:
     def drawQuad(self, tl: Point, tr: Point, bl: Point, br: Point, fill: Color) -> None:
         self.draw.polygon([tl, tr, bl, br], fill)
 
-    def _drawBase(self, current: int):
+    def _drawBase(self, page: int):
         for i, date in enumerate(self.dates):
             x = self.GAP * (2 * i + 1) + (self.CARD_WIDTH * i)
             y = self.HEIGHT - self.GAP - self.CARD_HEIGHT
-            bgColor = Colors.DARK_CHARCOAL if i == current else Colors.RAISIN_BLACK
+            bgColor = Colors.DARK_CHARCOAL if i == page else Colors.RAISIN_BLACK
             self.drawRoundedRectangle(x, y, self.CARD_WIDTH, self.CARD_HEIGHT, bgColor)
             weekday = getDayShort(date)
-            self.drawText(x + self.CARD_WIDTH // 2, y + self.GAP // 2, weekday)
+            self.drawText(
+                x + self.CARD_WIDTH // 2, y + self.GAP // 2, weekday, font_size=20
+            )
             data = self.weatherData[date]
             temp_min = getMaxTemp(data)
             temp_max = getMinTemp(data)
@@ -129,14 +130,12 @@ class WeatherImage:
                 + (self.CARD_HEIGHT - self.ICON_WIDTH) // 2
             )
             self.drawWeatherIcon(iconCode, x, y)
-            data = self.weatherData[self.dates[current]]
+            data = self.weatherData[self.dates[page]]
             iconCode = getIconCode(data)
             temp = getAvgTemp(data)
-            weekday = getDayFull(self.dates[current])
+            weekday = getDayFull(self.dates[page])
             description = getDescription(data)
-            self.drawText(
-                self.WIDTH / 2, self.GAP, self.location, anchor="mt", font_size=20
-            )
+            self.drawText(self.WIDTH / 2, self.GAP, self.location, font_size=20)
             self.drawWeatherIcon(iconCode, self.GAP, self.GAP, 90)
             self.drawText(
                 self.GAP + 90 + 5, self.GAP + 30, f"{temp}°", font_size=30, anchor="lm"
@@ -152,12 +151,11 @@ class WeatherImage:
                 anchor="rt",
             )
 
-    def drawChart(self, current: int, view: int) -> None:
-        self.current = current
+    def drawChart(self, page: int, view: str) -> None:
+        self.page = page
         self.view = view
-        self._drawBase(current)
-        label = self.LABELS[view]
-        self.drawText(self.WIDTH / 2, self.HEIGHT / 8, label, anchor="mt", font_size=15)
+        self._drawBase(page)
+        self.drawText(self.WIDTH / 2, self.HEIGHT / 8, view, font_size=15)
         if view == Views.TEMPERATURE:
             self.drawTemperatureGraph()
         elif view == Views.PRECIPITATION:
@@ -166,7 +164,7 @@ class WeatherImage:
             self.drawWindGraph()
 
     def drawPrecipitationGraph(self) -> None:
-        data = self.weatherData[self.dates[self.current]]
+        data = self.weatherData[self.dates[self.page]]
         times = [d["time"] for d in data]
         rains = [d["rain"] for d in data]
         y2 = self.HEIGHT - self.GAP * 2 - self.CARD_HEIGHT
@@ -177,10 +175,8 @@ class WeatherImage:
             y1 = y2 - rains[i] * self.BAR_HEIGHT_FACTOR * 2
             self.drawQuad((x1, y1), (x2, y1), (x2, y2), (x1, y2), Colors.SPACE_CADET)
             self.drawLine(x1, y1, x2, y1, Colors.JORDY_BLUE)
-            self.drawText(x1 + width / 2, y2 + 5, times[i], font_size=12, anchor="mt")
-            self.drawText(
-                x1 + width / 2, y1 - 5, f"{rains[i]} mm", font_size=12, anchor="mb"
-            )
+            self.drawText(x1 + width / 2, y2 + 5, times[i])
+            self.drawText(x1 + width / 2, y1 - 5, f"{rains[i]} mm", anchor="mb")
 
     def drawArrow(self, x: int, y: int, width: int, angle: float) -> None:
         with Image.open("wind_icon.png") as icon:
@@ -190,7 +186,7 @@ class WeatherImage:
     def drawWindGraph(self) -> None:
         max_width = (self.WIDTH - 2 * self.GAP) / 8
         max_height = self.HEIGHT - self.GAP * 3 - self.CARD_HEIGHT - 90
-        data = self.weatherData[self.dates[self.current]]
+        data = self.weatherData[self.dates[self.page]]
         speeds = [d["wind_speed"] * 3.6 for d in data]
         degs = [d["wind_deg"] for d in data]
         times = [d["time"] for d in data]
@@ -207,64 +203,31 @@ class WeatherImage:
             self.drawText(
                 int(x + max_width / 2),
                 int(y),
-                f"{int(round(speeds[i], 0))} km/h",
+                f"{round(speeds[i])} km/h",
                 anchor="mb",
                 font_size=15,
             )
             self.drawArrow(int(x + x_offset), int(y + y_offset), int(width), degs[i])
-            self.drawText(x + max_width / 2, y + max_height, times[i], font_size=12)
+            self.drawText(x + max_width / 2, y + max_height, times[i])
 
     def drawTemperatureGraph(self) -> None:
-        data = self.weatherData[self.dates[self.current]]
+        data = self.weatherData[self.dates[self.page]]
         times = [d["time"] for d in data]
         temps = [d["temp"] for d in data]
+        minTemp = min(temps) - 1
         width = self.GRAPH_WIDTH / len(temps)
-        y = self.HEIGHT - self.GAP * 2 - self.CARD_HEIGHT
-        x1 = self.GAP
-        x2 = self.GAP + width
-        y1 = y - temps[0] * self.BAR_HEIGHT_FACTOR
-        y2 = y
-        textY = y - temps[0] * self.BAR_HEIGHT_FACTOR
-        self.drawQuad(
-            (x1, y1),
-            (x2, y1),
-            (x2, y2 - self.TEXT_HEIGHT),
-            (x1, y2 - self.TEXT_HEIGHT),
-            Colors.CAFE_NOIR,
-        )
-        self.drawLine(x1, y1, x2, y1, Colors.TANGERINE_YELLOW)
-        j = 0
-        while j < len(temps) - 1:
-            x1 = self.GAP + width * (j + 1)
-            x2 = self.GAP + width * (j + 2)
-            y1 = y - temps[j] * self.BAR_HEIGHT_FACTOR
-            y2 = y - temps[j + 1] * self.BAR_HEIGHT_FACTOR
-            self.drawQuad(
-                (x1, y1),
-                (x2, y2),
-                (x2, y - self.TEXT_HEIGHT),
-                (x1, y - self.TEXT_HEIGHT),
-                Colors.CAFE_NOIR,
-            )
+        y = self.HEIGHT - self.GAP * 2 - self.CARD_HEIGHT - self.TEXT_HEIGHT
+        temps = [temps[0]] + temps
+        times = [times[0]] + times
+        for j in range(len(temps) - 1):
+            x1 = self.GAP + width * j
+            x2 = self.GAP + width * (j + 1)
+            y1 = y - (temps[j] - minTemp) * self.BAR_HEIGHT_FACTOR
+            y2 = y - (temps[j + 1] - minTemp) * self.BAR_HEIGHT_FACTOR
+            self.drawQuad((x1, y1), (x2, y2), (x2, y), (x1, y), Colors.CAFE_NOIR)
             self.drawLine(x1, y1, x2, y2, Colors.TANGERINE_YELLOW)
-            a = y - temps[j] * self.BAR_HEIGHT_FACTOR
-            b = y - temps[j + 1] * self.BAR_HEIGHT_FACTOR
             textX = x1 + width / 2
-            textY = min(a, b)
             self.drawText(
-                textX,
-                textY - 5,
-                str(round(temps[j + 1], 1)),
-                font_size=12,
-                anchor="mb",
+                textX, min(y1, y2) - 5, f"{round(temps[j + 1], 1)}°", anchor="mb"
             )
-            self.drawText(x1 + width / 2, y, times[j + 1], font_size=12)
-            j += 1
-        self.drawText(
-            self.GAP + width / 2,
-            y - temps[0] * self.BAR_HEIGHT_FACTOR - 5,
-            str(round(temps[0], 1)),
-            font_size=12,
-            anchor="mb",
-        )
-        self.drawText(self.GAP + width / 2, y, times[0], font_size=12)
+            self.drawText(textX, y + self.TEXT_HEIGHT, times[j + 1])
